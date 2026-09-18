@@ -4,5 +4,4 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 EXPOSE 3000
-# Ensures service binds correctly for judge platform
 CMD ["node", "server.js"]
