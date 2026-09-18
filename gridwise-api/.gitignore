@@ -1,0 +1,29 @@
+# Dependency directories
+node_modules/
+frontend/node_modules/
+
+# Environment variables & secrets (CRITICAL: Do not remove)
+.env
+.env.local
+.env.*
+
+# React / Vite build output
+# Note: If you want to commit your built React UI so judges can see it 
+# when they pull your repo, comment out the line below.
+frontend/dist/
+
+# Node environment & Logs
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+logs/
+*.log
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Docker
+.dockerignore
