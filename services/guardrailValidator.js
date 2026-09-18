@@ -39,3 +39,6 @@ exports.validateGuardrails = (rawInterpretations, operator_notes) => {
     
     return validInterpretations;
 };
+
+// Add this at the bottom of services/guardrailValidator.js
+exports.validateDirectives = exports.validateGuardrails;

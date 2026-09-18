@@ -1,9 +1,6 @@
-const { GoogleGenAI } = require('@google/genai');
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 exports.interpretNotes = async (operator_notes) => {
-    // Moved inside the function so it reads the key AFTER the server is fully running
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
     const prompt = `
     You are an energy system expert. Analyze the following operator notes and extract deterministic directives for an energy optimizer.
     For each note, return exactly ONE JSON object mapping.
@@ -33,15 +30,75 @@ exports.interpretNotes = async (operator_notes) => {
     ]
     `;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3.6-flash',
-            contents: prompt,
-            config: { responseMimeType: 'application/json' }
-        });
-        
-        return JSON.parse(response.text);
-    } catch (error) {
-        throw new Error(`LLM generation error: ${error.message}`);
+    const maxRetries = 3;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+        try {
+            attempt++;
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    'HTTP-Referer': 'http://localhost:3000',
+                    'X-Title': 'GridWise Optimizer',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'openai/gpt-4o',
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a precise data extraction engine. Always respond with valid JSON containing the requested array structure.'
+                        },
+                        {
+                            role: 'user',
+                            content: prompt
+                        }
+                    ],
+                }),
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`OpenRouter API error (status ${response.status}): ${errText}`);
+            }
+
+            const data = await response.json();
+            const content = data.choices[0].message.content;
+            
+            // Clean markdown block wrappers if the model accidentally includes them
+            const cleanedContent = content.replace(/```json/g, '').replace(/```/g, '').trim();
+            const parsed = JSON.parse(cleanedContent);
+
+            // Handle cases where the model wraps the array inside an object key
+            if (Array.isArray(parsed)) {
+                return parsed;
+            } else if (typeof parsed === 'object' && parsed !== null) {
+                const key = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
+                if (key) return parsed[key];
+            }
+            
+            return parsed;
+
+        } catch (error) {
+            console.warn(`[Attempt ${attempt}] OpenRouter interpretation failed: ${error.message}`);
+            
+            if (attempt < maxRetries) {
+                console.log(`Retrying in ${attempt * 2} seconds...`);
+                await sleep(attempt * 2000);
+            } else {
+                // Hackathon fallback safety: return safe no_op array if LLM completely fails
+                console.warn("[WARNING] OpenRouter unavailable after retries. Falling back to default no_op directives.");
+                return operator_notes.map((_, i) => ({
+                    note_index: i,
+                    applies: false,
+                    directive_type: "no_op",
+                    structured_adjustment: null,
+                    explanation: "Fallback due to LLM provider unavailability."
+                }));
+            }
+        }
     }
 };
